@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<title>Surgical</title>
+
+<!-- Home screen / PWA support -->
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Surgical">
+<meta name="mobile-web-app-capable" content="yes">
+
+<!-- Image capture for the Share-as-Image feature -->
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f4f7f7;
+    color: #172020;
+  }
+  .app {
+    max-width: 700px;
+    margin: auto;
+    min-height: 100vh;
+  }
+  .top-bar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header {
+    background: #0f766e;
+    color: white;
+    padding: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.15);
+  }
+  header h1 { margin: 0; font-size: 21px; }
+  header p { margin: 5px 0 0; font-size: 13px; opacity: .9; }
+  main { padding: 14px; }
+  .card {
+    background: white;
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 14px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.06);
+  }
+  .btn {
+    border: 0;
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    min-height: 46px;
+  }
+  .primary { background: #0f766e; color: white; width: 100%; }
+  .secondary { background: #e6f1ef; color: #075e58; }
+  .danger { background: #fee2e2; color: #991b1b; }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+  .actions .full { grid-column: 1 / -1; }
+  .status {
+    font-size: 14px;
+    line-height: 1.45;
+    margin-top: 10px;
+    white-space: pre-line;
+  }
+  .small { font-size: 12px; color: #607070; }
+  .hidden { display: none; }
+  .table-wrap {
+    overflow-x: auto;
+    margin-top: 12px;
+    border: 1px solid #dbe6e5;
+    border-radius: 10px;
+  }
+  @media (max-width: 400px) {
+    main { padding: 10px; }
+    .card { padding: 13px; }
+  }
+
+  /* --- Cylinder report table --- */
+  .cyl-header { text-align: center; margin-bottom: 4px; }
+  .cyl-header .hosp { font-weight: 700; font-size: 14px; }
+  .cyl-header .rep-title { font-size: 13px; margin-top: 3px; }
+  .cyl-header .rep-title b { color: #0f766e; }
+  table.cyl {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 980px;
+    font-size: 12px;
+  }
+  table.cyl th {
+    background: #0f766e;
+    color: #fff;
+    font-size: 10.5px;
+    text-align: center;
+    padding: 7px 4px;
+    line-height: 1.2;
+  }
+  table.cyl td {
+    padding: 3px;
+    border: 1px solid #e2e8e8;
+    text-align: center;
+    vertical-align: middle;
+  }
+  table.cyl td.cyl-name { text-align: left; font-weight: 600; white-space: nowrap; padding-left: 8px; }
+  table.cyl input {
+    width: 100%;
+    border: 1px solid #cbd5d5;
+    border-radius: 6px;
+    padding: 7px 4px;
+    font-size: 12px;
+    text-align: center;
+    font-family: Arial, sans-serif;
+    box-sizing: border-box;
+  }
+  table.cyl .computed {
+    display: block;
+    padding: 7px 4px;
+    background: #f1f5f4;
+    border-radius: 6px;
+    font-weight: 700;
+    color: #075e58;
+    border: 1px solid #e2e8e8;
+    box-sizing: border-box;
+    min-height: 16px;
+  }
+  table.cyl .computed.mismatch { color: #b91c1c; background: #fee2e2; }
+  .d-cell { display: flex; align-items: center; gap: 3px; }
+  .d-cell .d-input, .d-cell [data-action="save"] { display: none; }
+  .d-cell.editing .d-display, .d-cell.editing [data-action="edit"] { display: none; }
+  .d-cell.editing .d-input { display: block; flex: 1 1 auto; min-width: 0; }
+  .d-cell.editing [data-action="save"] { display: block; }
+  .d-cell .d-display { flex: 1 1 auto; }
+  .d-toggle-btn {
+    border: 0;
+    background: #e6f1ef;
+    color: #075e58;
+    border-radius: 6px;
+    width: 24px;
+    height: 24px;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    flex: 0 0 auto;
+    padding: 0;
+  }
+  table.cyl tr.section td {
+    background: #e6f1ef;
+    color: #075e58;
+    font-weight: 700;
+    text-align: left;
+    padding: 7px 8px;
+  }
+
+  /* --- Settings panel --- */
+  .settings-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 2fr auto;
+    gap: 6px;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #eef3f2;
+  }
+  .settings-row.section-row {
+    grid-template-columns: 1fr auto;
+  }
+  .settings-row input, .settings-row select {
+    width: 100%;
+    border: 1px solid #cbd5d5;
+    border-radius: 7px;
+    padding: 8px 7px;
+    font-size: 13px;
+    font-family: Arial, sans-serif;
+    box-sizing: border-box;
+  }
+  .settings-row .remove-row-btn {
+    border: 0;
+    background: #fee2e2;
+    color: #991b1b;
+    border-radius: 7px;
+    width: 32px;
+    height: 32px;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  .settings-row-label {
+    font-size: 10px;
+    color: #607070;
+    display: block;
+    margin-bottom: 2px;
+  }
+</style>
+</head>
+
+<body>
+<div class="app">
+  <div id="embedBanner" class="hidden" style="background:#fff7ed;border-bottom:1px solid #fed7aa;padding:10px 14px;font-size:13px;color:#9a3412;display:flex;align-items:center;gap:10px;justify-content:space-between;">
+    <span>📱 This won't work fully inside this preview.</span>
+    <button id="openBrowserBtn" style="border:0;background:#0f766e;color:#fff;padding:7px 12px;border-radius:8px;font-size:13px;font-weight:600;white-space:nowrap;cursor:pointer;">Open in Browser</button>
+  </div>
+  <div class="top-bar">
+    <header>
+      <h1>🛢️ Cylinder Report</h1>
+      <p>Daily surgical store cylinder log</p>
+    </header>
+  </div>
+
+  <main>
+    <section class="card">
+      <div id="cylinderCaptureArea" style="background:#fff;padding:6px 2px;">
+        <div class="cyl-header">
+          <div class="hosp">GOVT MEDICAL COLLEGE HOSPITAL , KRISHNAGIRI</div>
+          <div class="rep-title">SURGICAL STORE - CYLINDER DAILY REPORT ON - <b id="cylinderDate"></b></div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="cyl">
+            <thead>
+              <tr>
+                <th>S.NO</th>
+                <th>NAME OF THE CYLINDER</th>
+                <th>TOTAL NO. OF CYLINDERS</th>
+                <th>SURGICAL STORE FULL</th>
+                <th>SEND FOR REFILLING</th>
+                <th>EMPTY</th>
+                <th>IN WARDS</th>
+                <th>VALVE REPAIR</th>
+                <th>TOTAL</th>
+                <th>Reserve</th>
+                <th>GROUND STOCK</th>
+              </tr>
+            </thead>
+            <tbody id="cylinderBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <p class="small" style="margin-top:10px;">Type today's values in the white boxes — In Wards / Store Full / Total / Ground Stock fill in automatically, same as your Excel sheet. Date fills in by itself.</p>
+      <p class="small">The shared image includes S.No through Valve Repair (Total / Reserve / Ground Stock are left out of the picture).</p>
+      <div id="dailyStatus" class="status"></div>
+
+      <div class="actions" style="margin-top:12px">
+        <button id="shareCylinderBtn" class="btn primary full">📤 Share as Image (WhatsApp)</button>
+      </div>
+      <div id="cylinderShareStatus" class="status"></div>
+
+      <!-- Off-screen snapshot used only for the shared image — S.No through
+           Valve Repair only. Kept out of the visible layout (not display:none,
+           since html2canvas needs real layout to render from) but shifted
+           off-screen so the user never sees it. -->
+      <div id="cylinderShareArea" style="position:absolute; left:-9999px; top:0; width:680px; background:#fff; padding:8px 4px;">
+        <div class="cyl-header">
+          <div class="hosp">GOVT MEDICAL COLLEGE HOSPITAL , KRISHNAGIRI</div>
+          <div class="rep-title">SURGICAL STORE - CYLINDER DAILY REPORT ON - <b id="cylinderShareDate"></b></div>
+        </div>
+        <table class="cyl" style="min-width:0;">
+          <thead>
+            <tr>
+              <th>S.NO</th>
+              <th>NAME OF THE CYLINDER</th>
+              <th>TOTAL NO. OF CYLINDERS</th>
+              <th>SURGICAL STORE FULL</th>
+              <th>SEND FOR REFILLING</th>
+              <th>EMPTY</th>
+              <th>IN WARDS</th>
+              <th>VALVE REPAIR</th>
+            </tr>
+          </thead>
+          <tbody id="cylinderShareBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <button id="settingsToggleBtn" class="btn secondary full">⚙️ Manage Cylinder Types &amp; Formulas</button>
+
+      <div id="settingsPanel" class="hidden" style="margin-top:14px;">
+        <p class="small">Rename a cylinder, change its fixed Total, change which value auto-calculates, or add/remove cylinder types entirely. Nothing here affects today's typed-in numbers for rows you don't change. Tap <b>Save Changes</b> to make it permanent on this device.</p>
+
+        <div id="settingsList"></div>
+
+        <div class="actions" style="margin-top:10px">
+          <button id="addCylinderBtn" class="btn secondary">➕ Add Cylinder Type</button>
+          <button id="addSectionBtn" class="btn secondary">➕ Add Section Label</button>
+        </div>
+        <div class="actions" style="margin-top:10px">
+          <button id="saveSettingsBtn" class="btn primary full">💾 Save Changes</button>
+        </div>
+        <div class="actions" style="margin-top:10px">
+          <button id="resetDefaultsBtn" class="btn danger full">↩️ Reset to Original Defaults</button>
+        </div>
+        <div id="settingsStatus" class="status"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+// Detect whether this page is running inside an embedded preview (like a
+// chat app's inline file viewer) rather than as a normal top-level page.
+// Sharing/native features are typically restricted there, so we surface a
+// banner with a one-tap way to reopen the page in a real browser tab.
+(function checkEmbeddedContext() {
+  let embedded = false;
+  try {
+    embedded = window.self !== window.top;
+  } catch (err) {
+    embedded = true; // cross-origin frame access throws — definitely embedded
+  }
+
+  if (embedded) {
+    const banner = document.getElementById('embedBanner');
+    banner.classList.remove('hidden');
+    document.getElementById('openBrowserBtn').addEventListener('click', () => {
+      const opened = window.open(window.location.href, '_blank');
+      if (!opened) {
+        alert('Please use your browser\'s share/menu button to open this page directly (outside the preview).');
+      }
+    });
+  }
+})();
+
+/* ================= Cylinder Report ================= */
+// Same formulas as the original Excel, preserved exactly per row —
+// not standardized — since row 1 and row 2 genuinely work differently
+// from rows 3-10 in the source file.
+//
+//  type: 'standard' → you type Store Full(E)/Refilling(F)/Empty(G)/Valve Repair(I)
+//                      → In Wards(H) = Total(D) - F - G - E - I
+//  type: 'special1' → you type In Wards(H)/Refilling(F)/Empty(G)/Valve Repair(I)/Reserve(L)
+//                      → Store Full(E) = Reserve(L) - Empty(G) - Refilling(F)
+//  type: 'manual'   → every value is typed directly, nothing is calculated
+//                      except Total; Ground Stock is left blank (matches source)
+//  Total(K) = E+F+G+H+I always. Ground Stock(M) = E+F+G, except 'manual' rows.
+
+const DEFAULT_CYLINDER_ROWS = [
+  { sno: 1, name: 'B TYPE O2',   total: 220, type: 'special1', F: 44, G: 13, H: 139, I: 13, L: 68 },
+  { sno: 2, name: 'D TYPE O2',   total: 131, type: 'manual',   E: 0,  F: 0,  G: 2,   H: 99, I: 30, L: 'NIL' },
+  { section: 'OPERATION THEATRE' },
+  { sno: 3, name: 'A TYPE O2',   total: 45,  type: 'standard', E: 13, F: 0, G: 0, I: 0, L: 13 },
+  { sno: 4, name: 'A TYPE N2O',  total: 14,  type: 'standard', E: 0,  F: 0, G: 0, I: 0, L: 'NIL' },
+  { sno: 5, name: 'A TYPE CO2',  total: 8,   type: 'standard', E: 0,  F: 0, G: 0, I: 0, L: 'NIL' },
+  { sno: 6, name: 'B TYPE N2O',  total: 10,  type: 'standard', E: 4,  F: 0, G: 0, I: 0, L: 4 },
+  { sno: 7, name: 'B TYPE CO2',  total: 6,   type: 'standard', E: 0,  F: 1, G: 0, I: 0, L: 'NIL' },
+  { sno: 8, name: 'D TYPE N2O',  total: 34,  type: 'standard', E: 5,  F: 3, G: 0, I: 0, L: 8 },
+  { sno: 9, name: 'D TYPE C02',  total: 10,  type: 'standard', E: 5,  F: 0, G: 0, I: 0, L: 5 },
+  { sno: 10, name: 'B TYPE C0',  total: 2,   type: 'standard', E: 0,  F: 0, G: 0, I: 0, L: 'NIL' }
+];
+
+// Everything about the table — names, totals, and which formula each row
+// uses — is saved permanently in this browser under one config key, so
+// the whole structure is editable from the Settings panel with no code
+// changes ever needed. CYLINDER_ROWS is the live, mutable working copy.
+const CONFIG_STORAGE_KEY = 'cylinderConfig';
+const OLD_TOTALS_KEY = 'cylinderTotalsOverride'; // from an earlier version — migrated in, then unused
+
+let CYLINDER_ROWS = loadConfig();
+
+function loadConfig() {
+  try {
+    const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (err) { /* fall through to defaults */ }
+
+  // First run after upgrading from the older "totals only" version —
+  // carry forward any total the user had already saved there.
+  const rows = JSON.parse(JSON.stringify(DEFAULT_CYLINDER_ROWS));
+  try {
+    const oldRaw = localStorage.getItem(OLD_TOTALS_KEY);
+    if (oldRaw) {
+      const oldSaved = JSON.parse(oldRaw);
+      rows.forEach(row => {
+        if (!row.section && oldSaved[row.sno] !== undefined) row.total = oldSaved[row.sno];
+      });
+    }
+  } catch (err) { /* ignore */ }
+  return rows;
+}
+
+function saveConfig() {
+  try {
+    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(CYLINDER_ROWS));
+  } catch (err) {
+    // If storage isn't available, changes still apply for this session —
+    // they just won't survive a reload.
+  }
+}
+
+// Read whatever is currently typed/shown on screen for each row's daily
+// fields, keyed by S.No — used so that Settings changes (rename, retotal,
+// change formula, add/remove types) never wipe out today's entries for
+// rows that weren't touched.
+function captureLiveDailyValues() {
+  const live = {};
+  document.querySelectorAll('#cylinderBody > tr').forEach(tr => {
+    const snoCell = tr.children[0];
+    if (!snoCell) return;
+    const sno = parseInt(snoCell.textContent, 10);
+    if (isNaN(sno)) return;
+    const row = {};
+    ['E', 'F', 'G', 'H', 'I', 'L'].forEach(f => {
+      const inp = tr.querySelector(`input[data-field="${f}"]`);
+      if (inp) row[f] = inp.value;
+    });
+    live[sno] = row;
+  });
+  return live;
+}
+
+// Auto-save whatever's typed today so closing the browser mid-entry never
+// loses data — but only for today: reopening on a new day starts fresh
+// (matches how a daily paper register works, one row of values per day).
+const DAILY_STORAGE_KEY = 'cylinderDailyEntries';
+
+function saveDailyEntries() {
+  try {
+    localStorage.setItem(DAILY_STORAGE_KEY, JSON.stringify({
+      date: todayStr(),
+      values: captureLiveDailyValues()
+    }));
+  } catch (err) { /* ignore — daily autosave is a convenience, not critical */ }
+}
+
+function loadTodaysSavedEntries() {
+  try {
+    const raw = localStorage.getItem(DAILY_STORAGE_KEY);
+    if (!raw) return null;
+    const saved = JSON.parse(raw);
+    if (saved.date !== todayStr()) {
+      localStorage.removeItem(DAILY_STORAGE_KEY); // new day — don't carry old entries forward
+      return null;
+    }
+    return saved.values || null;
+  } catch (err) {
+    return null;
+  }
+}
+
+function parseNum(v) {
+  const n = parseFloat(v);
+  return isNaN(n) ? 0 : n;
+}
+
+// Strips anything except digits and a single decimal point as the user
+// types — keeps quantity fields honest without a silent "letters become
+// zero" surprise later. Reserve (L) is exempt since it may say "NIL".
+function makeNumericOnly(input) {
+  input.addEventListener('input', () => {
+    let cleaned = input.value.replace(/[^0-9.]/g, '');
+    const firstDot = cleaned.indexOf('.');
+    if (firstDot !== -1) {
+      cleaned = cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '');
+    }
+    if (cleaned !== input.value) input.value = cleaned;
+  });
+}
+
+function cylEditableCell(field, value) {
+  return `<td><input type="text" inputmode="decimal" data-field="${field}" value="${value}"></td>`;
+}
+function cylComputedCell(field) {
+  return `<td><span class="computed" data-field="${field}"></span></td>`;
+}
+function cylLockedCell(field, value) {
+  return `<td>
+    <div class="d-cell locked" data-d-cell>
+      <span class="computed d-display">${value}</span>
+      <button type="button" class="d-toggle-btn" data-action="edit" title="Edit">✏️</button>
+      <input type="text" inputmode="decimal" class="d-input" data-field="${field}" value="${value}">
+      <button type="button" class="d-toggle-btn" data-action="save" title="Confirm">✓</button>
+    </div>
+  </td>`;
+}
+
+function recalcCylinderRow(tr, rowData) {
+  const getInput = (f) => tr.querySelector(`input[data-field="${f}"]`);
+  const getSpan = (f) => tr.querySelector(`span[data-field="${f}"]`);
+
+  const D = parseNum(getInput('D').value);
+  const F = parseNum(getInput('F').value);
+  const G = parseNum(getInput('G').value);
+  const I = parseNum(getInput('I').value);
+  const Lraw = getInput('L').value.trim();
+  const L = parseNum(Lraw);
+
+  let E, H;
+  if (rowData.type === 'special1') {
+    E = L - G - F;
+    getSpan('E').textContent = E;
+    H = parseNum(getInput('H').value);
+  } else if (rowData.type === 'manual') {
+    E = parseNum(getInput('E').value);
+    H = parseNum(getInput('H').value);
+  } else { // standard
+    E = parseNum(getInput('E').value);
+    H = D - F - G - E - I;
+    getSpan('H').textContent = H;
+  }
+
+  const K = E + F + G + H + I;
+  const kSpan = getSpan('K');
+  kSpan.textContent = K;
+  kSpan.classList.toggle('mismatch', K !== D);
+
+  const mSpan = getSpan('M');
+  if (rowData.type === 'manual') {
+    mSpan.textContent = '—';
+  } else {
+    mSpan.textContent = E + F + G;
+  }
+}
+
+function buildCylinderTable() {
+  const tbody = document.getElementById('cylinderBody');
+  // Prefer whatever's currently on screen (e.g. mid-session Settings save);
+  // if the table is empty (a fresh page load), fall back to today's
+  // auto-saved entries instead, so nothing typed earlier today is lost.
+  const domLive = captureLiveDailyValues();
+  const liveValues = Object.keys(domLive).length ? domLive : (loadTodaysSavedEntries() || {});
+  tbody.innerHTML = '';
+
+  CYLINDER_ROWS.forEach((row) => {
+    const tr = document.createElement('tr');
+
+    if (row.section) {
+      tr.className = 'section';
+      tr.innerHTML = `<td colspan="11">${row.section}</td>`;
+      tbody.appendChild(tr);
+      return;
+    }
+
+    const live = liveValues[row.sno] || {};
+    const val = (field, fallback) => (live[field] !== undefined ? live[field] : fallback);
+
+    let html = '';
+    html += `<td>${row.sno}</td>`;
+    html += `<td class="cyl-name">${row.name}</td>`;
+    // Total No. of Cylinders is the fixed master reference number for every
+    // cylinder type — locked behind a two-step edit (tap ✏️ to unlock, then
+    // confirm with ✓) so a stray tap during daily entry can't change it.
+    html += cylLockedCell('D', row.total);
+
+    if (row.type === 'special1') {
+      html += cylComputedCell('E');
+      html += cylEditableCell('F', val('F', row.F));
+      html += cylEditableCell('G', val('G', row.G));
+      html += cylEditableCell('H', val('H', row.H));
+      html += cylEditableCell('I', val('I', row.I));
+    } else if (row.type === 'manual') {
+      html += cylEditableCell('E', val('E', row.E));
+      html += cylEditableCell('F', val('F', row.F));
+      html += cylEditableCell('G', val('G', row.G));
+      html += cylEditableCell('H', val('H', row.H));
+      html += cylEditableCell('I', val('I', row.I));
+    } else {
+      html += cylEditableCell('E', val('E', row.E));
+      html += cylEditableCell('F', val('F', row.F));
+      html += cylEditableCell('G', val('G', row.G));
+      html += cylComputedCell('H');
+      html += cylEditableCell('I', val('I', row.I));
+    }
+
+    html += cylComputedCell('K');
+    html += cylEditableCell('L', val('L', row.L));
+    html += cylComputedCell('M');
+
+    tr.innerHTML = html;
+    tbody.appendChild(tr);
+
+    tr.querySelectorAll('input').forEach(inp => {
+      if (inp.dataset.field !== 'L') makeNumericOnly(inp);
+      inp.addEventListener('input', () => { recalcCylinderRow(tr, row); saveDailyEntries(); });
+    });
+
+    // Two-step lock: tap ✏️ to reveal the input, tap ✓ (or press Enter)
+    // to commit and re-lock — a stray tap alone can never change the value.
+    const dCell = tr.querySelector('[data-d-cell]');
+    if (dCell) {
+      const display = dCell.querySelector('.d-display');
+      const input = dCell.querySelector('.d-input');
+      dCell.querySelector('[data-action="edit"]').addEventListener('click', () => {
+        dCell.classList.add('editing');
+        input.value = display.textContent.trim();
+        input.focus();
+        input.select();
+      });
+      const commitEdit = () => {
+        const newTotal = parseNum(input.value.trim());
+        input.value = newTotal;       // keep the source-of-truth input clean
+        display.textContent = newTotal; // and the display in sync with it
+        dCell.classList.remove('editing');
+        row.total = newTotal;
+        saveConfig();
+        recalcCylinderRow(tr, row);
+
+        // Brief on-row confirmation that this is now a permanent change,
+        // not just a one-time display update.
+        const note = document.createElement('div');
+        note.textContent = '✅ Saved permanently';
+        note.style.cssText = 'font-size:10px;color:#0f766e;margin-top:2px;';
+        dCell.appendChild(note);
+        setTimeout(() => note.remove(), 2000);
+      };
+      dCell.querySelector('[data-action="save"]').addEventListener('click', commitEdit);
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') commitEdit(); });
+    }
+
+    recalcCylinderRow(tr, row);
+  });
+}
+buildCylinderTable();
+if (loadTodaysSavedEntries()) {
+  document.getElementById('dailyStatus').textContent = "📋 Resumed today's earlier entries.";
+}
+
+/* ================= Settings panel — names, totals, formulas ================= */
+// Works on a draft copy so nothing changes on the live report until
+// "Save Changes" is tapped — an accidental edit here can't silently
+// break today's report.
+let settingsDraft = [];
+
+const FORMULA_MODES = [
+  { value: 'standard', label: 'Standard — I type Store Full/Refilling/Empty/Valve Repair, In Wards auto-fills' },
+  { value: 'special1', label: 'Reserve-based — I type In Wards/Refilling/Empty/Valve Repair/Reserve, Store Full auto-fills' },
+  { value: 'manual',   label: 'Manual — I type every value myself, only Total auto-fills' }
+];
+
+function nextAvailableSno() {
+  const used = settingsDraft.filter(r => !r.section).map(r => r.sno);
+  let n = 1;
+  while (used.includes(n)) n++;
+  return n;
+}
+
+function renderSettingsList() {
+  const list = document.getElementById('settingsList');
+  list.innerHTML = '';
+
+  settingsDraft.forEach((row, idx) => {
+    const div = document.createElement('div');
+
+    if (row.section) {
+      div.className = 'settings-row section-row';
+      div.innerHTML = `
+        <div>
+          <span class="settings-row-label">Section label</span>
+          <input type="text" data-idx="${idx}" data-field="section" value="${row.section}">
+        </div>
+        <button type="button" class="remove-row-btn" data-idx="${idx}" title="Remove">🗑</button>
+      `;
+    } else {
+      const options = FORMULA_MODES.map(m =>
+        `<option value="${m.value}" ${row.type === m.value ? 'selected' : ''}>${m.label}</option>`
+      ).join('');
+      div.className = 'settings-row';
+      div.innerHTML = `
+        <div>
+          <span class="settings-row-label">Name</span>
+          <input type="text" data-idx="${idx}" data-field="name" value="${row.name}">
+        </div>
+        <div>
+          <span class="settings-row-label">Total No. of Cylinders</span>
+          <input type="text" inputmode="decimal" data-idx="${idx}" data-field="total" value="${row.total}">
+        </div>
+        <div>
+          <span class="settings-row-label">Formula</span>
+          <select data-idx="${idx}" data-field="type">${options}</select>
+        </div>
+        <button type="button" class="remove-row-btn" data-idx="${idx}" title="Remove">🗑</button>
+      `;
+    }
+    list.appendChild(div);
+  });
+
+  list.querySelectorAll('input[data-field="total"]').forEach(makeNumericOnly);
+
+  list.querySelectorAll('input, select').forEach(el => {
+    el.addEventListener('input', () => {
+      const idx = parseInt(el.dataset.idx, 10);
+      const field = el.dataset.field;
+      if (field === 'total') {
+        settingsDraft[idx][field] = parseNum(el.value);
+      } else {
+        settingsDraft[idx][field] = el.value;
+      }
+    });
+  });
+
+  list.querySelectorAll('.remove-row-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx, 10);
+      settingsDraft.splice(idx, 1);
+      renderSettingsList();
+    });
+  });
+}
+
+document.getElementById('settingsToggleBtn').addEventListener('click', () => {
+  const panel = document.getElementById('settingsPanel');
+  const opening = panel.classList.contains('hidden');
+  if (opening) {
+    settingsDraft = JSON.parse(JSON.stringify(CYLINDER_ROWS)); // fresh draft each time it's opened
+    renderSettingsList();
+    document.getElementById('settingsStatus').textContent = '';
+  }
+  panel.classList.toggle('hidden');
+});
+
+document.getElementById('addCylinderBtn').addEventListener('click', () => {
+  settingsDraft.push({
+    sno: nextAvailableSno(), name: 'NEW CYLINDER TYPE', total: 0,
+    type: 'standard', E: 0, F: 0, G: 0, I: 0, L: 'NIL'
+  });
+  renderSettingsList();
+});
+
+document.getElementById('addSectionBtn').addEventListener('click', () => {
+  settingsDraft.push({ section: 'NEW SECTION' });
+  renderSettingsList();
+});
+
+document.getElementById('saveSettingsBtn').addEventListener('click', () => {
+  const statusEl = document.getElementById('settingsStatus');
+
+  const dataRows = settingsDraft.filter(r => !r.section);
+  if (!dataRows.length) {
+    statusEl.textContent = '⚠️ Add at least one cylinder type before saving.';
+    return;
+  }
+  if (dataRows.some(r => !r.name || !r.name.trim())) {
+    statusEl.textContent = '⚠️ Every cylinder type needs a name.';
+    return;
+  }
+
+  CYLINDER_ROWS = settingsDraft;
+  saveConfig();
+  buildCylinderTable(); // preserves today's already-typed values for unaffected rows
+  statusEl.textContent = '✅ Saved permanently — the report below is updated.';
+});
+
+document.getElementById('resetDefaultsBtn').addEventListener('click', () => {
+  const statusEl = document.getElementById('settingsStatus');
+  const proceed = confirm(
+    '⚠️ This resets cylinder names, totals, and formulas back to the original 10 defaults.\n\n' +
+    "Today's typed-in daily values (Store Full, Refilling, etc.) are kept where the cylinder type still exists.\n\n" +
+    'This cannot be undone. Reset anyway?'
+  );
+  if (!proceed) return;
+
+  CYLINDER_ROWS = JSON.parse(JSON.stringify(DEFAULT_CYLINDER_ROWS));
+  saveConfig();
+  settingsDraft = JSON.parse(JSON.stringify(CYLINDER_ROWS));
+  renderSettingsList();
+  buildCylinderTable(); // preserves today's already-typed values for unaffected rows
+  statusEl.textContent = '✅ Reset to original defaults.';
+});
+
+function todayStr() {
+  const d = new Date();
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}.${mm}.${yyyy}`;
+}
+function updateCylinderDate() {
+  document.getElementById('cylinderDate').textContent = todayStr();
+}
+updateCylinderDate();
+
+// Build the off-screen S.No → Valve Repair snapshot from whatever is
+// currently on screen (typed inputs and live-computed spans), so the
+// shared image always reflects today's values without duplicating the
+// calculation logic.
+function buildShareSnapshot() {
+  const shareBody = document.getElementById('cylinderShareBody');
+  shareBody.innerHTML = '';
+
+  const liveRows = document.querySelectorAll('#cylinderBody > tr');
+  liveRows.forEach((tr, idx) => {
+    const rowData = CYLINDER_ROWS[idx];
+    const shareTr = document.createElement('tr');
+
+    if (rowData.section) {
+      shareTr.className = 'section';
+      shareTr.innerHTML = `<td colspan="8">${rowData.section}</td>`;
+      shareBody.appendChild(shareTr);
+      return;
+    }
+
+    const getVal = (field) => {
+      const inp = tr.querySelector(`input[data-field="${field}"]`);
+      if (inp) return inp.value;
+      const span = tr.querySelector(`span[data-field="${field}"]`);
+      return span ? span.textContent : '';
+    };
+
+    const cells = [rowData.sno, rowData.name, getVal('D'), getVal('E'), getVal('F'), getVal('G'), getVal('H'), getVal('I')];
+    shareTr.innerHTML = cells.map((c, i) => `<td${i === 1 ? ' class="cyl-name"' : ''}>${c}</td>`).join('');
+    shareBody.appendChild(shareTr);
+  });
+
+  document.getElementById('cylinderShareDate').textContent = todayStr();
+}
+
+// Check every row's Total (K, the computed E+F+G+H+I) against its fixed
+// Total No. of Cylinders (D) — this is the same sanity check your Excel's
+// TOTAL column was there for. Returns a list of rows that don't match.
+function findCylinderMismatches() {
+  const mismatches = [];
+  const liveRows = document.querySelectorAll('#cylinderBody > tr');
+  liveRows.forEach((tr, idx) => {
+    const rowData = CYLINDER_ROWS[idx];
+    if (rowData.section) return;
+    const kSpan = tr.querySelector('span[data-field="K"]');
+    if (kSpan && kSpan.classList.contains('mismatch')) {
+      mismatches.push(rowData.name);
+    }
+  });
+  return mismatches;
+}
+
+/* ---------- Share as Image (WhatsApp etc. via native share sheet) ---------- */
+document.getElementById('shareCylinderBtn').addEventListener('click', async () => {
+  const statusEl = document.getElementById('cylinderShareStatus');
+
+  if (!window.html2canvas) {
+    statusEl.textContent = '❌ Image generator is still loading. Please try again in a moment.';
+    return;
+  }
+
+  const mismatches = findCylinderMismatches();
+  if (mismatches.length) {
+    const proceed = confirm(
+      `⚠️ Total doesn't match Total No. of Cylinders for:\n\n${mismatches.join('\n')}\n\n` +
+      `Double-check those rows before sharing. Share anyway?`
+    );
+    if (!proceed) {
+      statusEl.textContent = `⚠️ Fix the mismatch in: ${mismatches.join(', ')} — then share again.`;
+      return;
+    }
+  }
+
+  statusEl.textContent = 'Preparing image...';
+  buildShareSnapshot();
+  const node = document.getElementById('cylinderShareArea');
+
+  try {
+    const canvas = await html2canvas(node, { scale: 2, backgroundColor: '#ffffff' });
+    canvas.toBlob(async (blob) => {
+      if (!blob) {
+        statusEl.textContent = '❌ Could not generate the image. Please try again.';
+        return;
+      }
+
+      const fileName = `cylinder_report_${todayStr().replace(/\./g, '-')}.png`;
+      const file = new File([blob], fileName, { type: 'image/png' });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: 'Cylinder Report',
+            text: `Cylinder Report - ${todayStr()}`
+          });
+          statusEl.textContent = '';
+        } catch (err) {
+          // AbortError just means the user closed the share sheet — not a failure.
+          statusEl.textContent = (err.name === 'AbortError') ? '' : '⚠️ Sharing didn\'t complete. Please try again.';
+        }
+      } else {
+        // Fallback for browsers without file-sharing support: download the
+        // image so it can be shared manually from the gallery/Photos app.
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        statusEl.textContent = '📥 Direct sharing isn\'t supported in this browser — the image was downloaded instead. Open it from your gallery and share to WhatsApp from there.';
+      }
+    }, 'image/png');
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = '❌ Could not create the image: ' + err.message;
+  }
+});
+</script>
+</body>
+</html>
